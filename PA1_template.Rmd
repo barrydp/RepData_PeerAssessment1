@@ -1,25 +1,167 @@
 ---
-title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
+title: "RepData_PeerAssessment1"
+author: "Barry du Plessis"
+date: "Sunday, April 19, 2015"
+output: html_document
 ---
 
+#Introduction
+This assignment looks at data created by capturing motion data over anumber of days.  In this specific case, the data collected was by one individual who collected the number of steps he/she took over a number of consecutive days in five-minute intervals.
 
-## Loading and preprocessing the data
+The data was not not consistently collected, with the result that data for a number of days is missing.
 
+# The Data
+The data consists of three data points:
+- Steps:  The number of steps taken during that five-minute interval
+- Date:  The date on which the data was collected
+- Interval:  The relevant five-minute interval, starting at 0 (for 00h00) and going through to 2355 (for 23h55)
 
+The dataset is stored in a comma-separated-value (CSV) file and there are a total of 17,568 observations in this dataset.
 
-## What is mean total number of steps taken per day?
+#  Code
+## Load necessary Libraries and do basic housekeeping
+Load the necessary libraries.  First check to see if they're already installed.
+If they're not installed, install them.  
 
+```{r eval=TRUE,warning=FALSE}
+pkg <- c("plyr", "timeDate", "lattice")
+new.pkg <- pkg[!(pkg %in% installed.packages())]
+if (length(new.pkg))
+{
+    install.packages(new.pkg)
+}
+library(plyr)
+library(timeDate)
+library(lattice)
+```
 
+Next we save the old directory to restore it later, and set a new working directory.
 
-## What is the average daily activity pattern?
+```{r eval=TRUE,warning=FALSE}
+OldDir <- getwd()
+mPath <- "H:\\Coursera\\DataScientist\\Reproducible Research\\Week 2\\repdata_data_activity"
+setwd(mPath)
+DirFileName <- "activity.csv"
+```  
 
+Once done, we read the data
 
+```{r eval=TRUE,warning=FALSE}
+mData <- read.csv(DirFileName)
+```
 
-## Imputing missing values
+## Clean the data
+The data has a number of days for which no data was collected.  For some of the questions, this data need to be removed.  However, as the first number of questions can be run on the dataset as-is, we will do that later.
+At this stage, we only need to set the "date" field to a date format.
 
+```{r eval=TRUE,warning=FALSE}
+mData$date <- as.Date(mData$date)
+```
 
+## Part one of the data analysis.
+For part one, we work on the full, original dataset.  We need to answer the following questions:
+1. Calculate the total number of steps taken per day
+2. Make a histogram of the total number of steps taken each day
+3. Calculate and report the mean and median of the total number of steps taken per day
 
-## Are there differences in activity patterns between weekdays and weekends?
+### 1. Calculate the total number of steps taken per day
+
+```{r eval=TRUE,warning=FALSE}
+mTotalSteps <- ddply(mData, .(date), summarize, sum = sum(steps)) 
+mTotalSteps
+```
+
+###2. Make a histogram of the total number of steps taken each day
+```{r eval=TRUE,warning=FALSE}
+hist(mTotalSteps$sum)
+```
+###3. Calculate the median of the total number of steps taken per day
+```{r eval=TRUE,warning=FALSE}
+mMedian <- ddply(mData, .(date), summarise, median = median(steps))
+mMedian
+```
+###4. Calculate the mean of the total number of steps taken per day
+```{r eval=TRUE,warning=FALSE}
+mMean <- ddply(mData, .(date), summarize, mean = mean(steps))
+mMean
+```
+## Part two of the data analysis.
+In this section we look at the daily activity pattern, i.e. the data per interval.    
+### 1. Make a time series plot of the 5-minute interval and the average number of steps taken, averaged across all days.  
+First we get the total number of steps per 5-minute interval:
+```{r eval=TRUE,warning=FALSE}
+mIntervalSteps <- ddply(mData, .(interval), summarize, sum = sum(steps, na.rm=TRUE))
+```
+
+Then we get the mean of the steps taken per interval:
+```{r eval=TRUE,warning=FALSE}
+NrOfDays <- length(unique(mData$date))
+mFillData <- ddply(mData, .(interval), summarize, sum = sum(steps, na.rm=TRUE), nas = sum(is.na(steps)), mean = round(sum/(NrOfDays - nas)))
+```
+
+And then we plot this data to show the mean daily activity pattern:
+
+```{r eval=TRUE,warning=FALSE}
+plot(mFillData$interval, mFillData$mean, xlab="Time in 5-minute intervals", ylab="Average steps", type="l")
+```  
+
+### Show which time interval has the highest number of steps.
+
+```{r eval=TRUE,warning=FALSE}
+mMax <- mFillData[max(mFillData$mean),]
+mMax
+```
+
+As can be seen, during the interval `r mMax$interval`, the higest number of step `r (mMax$mean)` occured.
+
+## Part three of the data analysis.
+I this section, we consider the difference the absense of data makes.  Prior analyses worked on the full dataset; in this section we replace all missing data with the mean of the data for that interval.
+```{r eval=TRUE,warning=FALSE}
+mDataFilled <- mData
+impute.mean <- function(x) replace(x, is.na(x), mean(x, na.rm = TRUE))
+mDataFilled <- ddply(mData, .(interval), transform, steps = impute.mean(steps))
+mDataFilledSummary <- ddply(mDataFilled, .(interval), summarize, sum = sum(steps, na.rm=TRUE), nas = sum(is.na(steps)), mean = round(sum/(NrOfDays - nas)), median = median(steps))
+```
+Once done, we plot a histogram of this data:
+```{r eval=TRUE,warning=FALSE}
+plot(mDataFilledSummary$interval, mDataFilledSummary$mean, xlab="Time in 5-minute intervals", ylab="Average steps", type="l")
+```
+
+We also work out the mean and median values for each time interval:
+
+The mean of the intervals are:  
+`r mDataFilledSummary$mean`  
+and the median of the intervals are:  
+`r mDataFilledSummary$median`
+
+## Part four of the data analysis.
+In this section we consider the effect of weekends on the data. In order to do this, we add a column to the dataset which determines whether each day is a weekday or not:
+```{r eval=TRUE,warning=FALSE}
+mDataFilled$DoW <- isWeekday(as.Date(mDataFilled$date))
+```
+Then we separate the days that are weekdays from the weekends:
+```{r eval=TRUE,warning=FALSE}
+mDataWeekDays <- mDataFilled[mDataFilled$DoW,]
+mDataWeekends <- mDataFilled[!mDataFilled$DoW,]
+```
+
+Next we work out the summary data per 5-minute interval:
+```{r eval=TRUE,warning=FALSE}
+mDataWeekSummary <- ddply(mDataFilled, .(interval), summarize, sum = sum(steps, na.rm=TRUE), nas = sum(is.na(steps)), mean = round(sum/(NrOfDays - nas)), DoW = "week")
+mDataWeekendSummary <- ddply(mDataFilled, .(interval), summarize, sum = sum(steps, na.rm=TRUE), nas = sum(is.na(steps)), mean = round(sum/(NrOfDays - nas)), DoW = "weekend")
+```  
+
+Combine the datasets again to get unified data:
+```{r eval=TRUE,warning=FALSE}
+mDataFilledSummaryFin <- rbind(mDataWeekSummary, mDataWeekendSummary)
+```
+
+And finally draw 2 plots on top of another, one showing the data for weekends, and the other showing the data for weekdays.
+```{r eval=TRUE,warning=FALSE}
+xyplot(mean ~ interval| levels(as.factor(mDataFilledSummaryFin$DoW)),
+       data = mDataFilledSummaryFin,
+       type = "l",
+       xlab = "Interval in 5 minute increments",
+       ylab = "Number of steps",
+       layout=c(1,2))
+```
